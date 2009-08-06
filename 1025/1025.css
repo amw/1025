@@ -3,6 +3,12 @@ body {
 }
 
 #start {
+	bottom: 40px;
+	left: 14px;
+	position: absolute;
+}
+
+#pause {
 	bottom: 10px;
 	left: 14px;
 	position: absolute;

@@ -1,85 +1,212 @@
-intervalId = 0;
-on = 0;
-
-function count() {
-	seconds++;
-	if (seconds==600) stopWork();
-	else if (seconds==720) startWork();
-	countdown();
-}
-
-function countdown() {
-	if (working) {
-		var text = 'Work ';
-		var time = 600-seconds;
-	} else {
-		var text = 'Play ';
-		var time = 720-seconds;
-	}
-	
-	// Draw the clocck
-	var clockMins = Math.floor(time/60).toString();
-	var clockSecs = (time%60).toString();
-	if (clockSecs.length<2) clockSecs = '0'+clockSecs;
-	text += clockMins+':'+clockSecs;
-	state(text);
-}
+var intervalId = 0;
+var on = false;
+var paused = false;
+var atWork = false;
+var workingTime = 600;
+var playingTime = 120;
+var seconds;
+var hours;
+var cycles;
 
 function init() {
-	if (window.widget) createGenericButton(document.getElementById('start'), '(10+2)5', punch);
+  if( window.widget ) {
+    createStartButton( 'Work' );
+    createPauseButton( 'Pause' );
+    enablePauseButton( false );
+  }
 }
 
-function punch() {
-	if (on && working) {
-		seconds = 599;
-		count();
-	} else toggle();
+function count() {
+  --seconds;
+
+  if ( seconds > 0 ) {
+    updateClockDisplay();
+  }
+  else {
+    if ( atWork ) {
+      startPlayByTimeout();
+    }
+    else {
+      startWorkByTimeout();
+    }
+  }
 }
 
-function say(text) {
-	setTimeout(function() {
-		widget.system('/usr/bin/say '+text, null)
-	}, 1);
+function startButtonPress() {
+  if ( on ) {
+    if( atWork ) {
+      startPlayByUser();
+    }
+    else {
+      startIdleByUser();
+    }
+  }
+  else {
+    startWorkByUser();
+  }
 }
 
-function startTimer() {
-	hours = 0;
-	seconds = 0;
-	cycles = 0;
-	startWork();
-	countdown();
-	intervalId = setInterval(count, 1000);
+function pauseButtonPress() {
+  if ( paused ) {
+    intervalId = setInterval( count, 1000 );
+    paused = false;
+    updateClockDisplay();
+    enableStartButton( true );
+    createPauseButton( 'Pause' );
+
+    text = '';
+    if ( atWork ) {
+      text = "Getting back to work";
+    }
+    else {
+      text = "Getting back to playing";
+    }
+
+    growl( text, "At hour " + hours + " cycle " + cycles  );
+  }
+  else {
+    clearInterval( intervalId );
+    paused = true;
+    updateState( "Paused" );
+    enableStartButton( false );
+    createPauseButton( 'Cont.' );
+
+    growl( "Paused", "At hour " + hours + " cycle " + cycles  );
+  }
+}
+
+function startWorkByUser() {
+  on = true;
+  paused = false;
+  enablePauseButton( true );
+
+  hours = 0;
+  cycles = 0;
+  seconds = workingTime;
+
+  intervalId = setInterval( count, 1000 );
+
+  startWork();
+}
+
+function startWorkByTimeout() {
+  seconds = workingTime;
+  say( startWork() );
 }
 
 function startWork() {
-	var text = 'Start. ';
-	seconds = 0;
-	working = 1;
-	if (cycles>0 && cycles%5==0) {
-		hours++;
-		text += ' Hour ' + (hours+1);
-	}
-	cycles++;
-	say(text);
+  atWork = true;
+  updateClockDisplay();
+
+  createStartButton( "Play" );
+
+  text = "Start.";
+  if ( cycles++ % 5 == 0 ) {
+    cycles = 1;
+
+    ++hours;
+    text += " Hour " + hours + ".";
+  }
+
+  growl( "Time to work", "Hour " + hours + " cycle " + cycles  );
+
+  return text;
 }
 
-function state(text) {
-	document.getElementById('status').firstChild.data = text
+function startPlayByUser() {
+  startPlay();
 }
 
-function stopTimer() {
-	clearInterval(intervalId);
-	say('Stop');
-	state('Idle');
+function startPlayByTimeout() {
+  say( startPlay() );
 }
 
-function stopWork() {
-	working = 0;
-	say('Stop');
+function startPlay() {
+  seconds = playingTime;
+  atWork = false;
+  updateClockDisplay();
+
+  createStartButton( 'Stop' );
+
+  growl( "Time to play", "Hour " + hours + " cycle " + cycles  );
+
+  return "Stop";
 }
 
-function toggle() {
-	if (on) stopTimer();
-	else startTimer();
-	on = Math.abs(on-1);
+function startIdleByUser() {
+  startIdle();
 }
+
+function startIdle() {
+  on = false;
+  clearInterval( intervalId );
+  createStartButton( "Work" );
+  enablePauseButton( false );
+  updateState( "Idle" );
+}
+
+function updateState( text ) {
+  document.getElementById( 'status' ).firstChild.data = text
+}
+
+function updateClockDisplay() {
+  text = "";
+  if ( atWork ) {
+    text = 'Work ' + getClock();
+  }
+  else {
+    text = 'Play ' + getClock();
+  }
+  updateState( text );
+}
+
+function createStartButton( title ) {
+  document.getElementById( 'start' ).innerHTML = '';
+  createGenericButton(
+    document.getElementById( 'start' ), title, startButtonPress, 60
+  );
+}
+
+function createPauseButton( title ) {
+  document.getElementById( 'pause' ).innerHTML = '';
+  createGenericButton(
+    document.getElementById( 'pause' ), title, pauseButtonPress, 60
+  );
+}
+
+function enableStartButton( enable ) {
+  genericButtonSetEnabled( document.getElementById( 'start' ), enable );
+}
+
+function enablePauseButton( enable ) {
+  genericButtonSetEnabled( document.getElementById( 'pause' ), enable );
+}
+
+function getClock() {
+  text = '';
+  clockMins = Math.floor( seconds / 60 ).toString();
+  clockSecs = ( seconds % 60 ).toString();
+  if( clockSecs.length < 2 ) clockSecs = '0' + clockSecs;
+  text += clockMins + ':' + clockSecs;
+  return text;
+}
+
+function say(text) {
+  setTimeout(function() {
+    widget.system('/usr/bin/say '+text, null)
+  }, 1);
+}
+
+function growl( title, description ) {
+  command = '/usr/bin/osascript growl.scpt '
+    + '"' + dblEscapeQuotes( title ) + '" '
+    + '"' + dblEscapeQuotes( description ) + '" '
+    + "no"
+
+  widget.system( command, null );
+}
+
+function dblEscapeQuotes(str) {
+  return str.replace(/\"/g, '\\\"');
+}
+
